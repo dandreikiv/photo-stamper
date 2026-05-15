@@ -952,9 +952,10 @@ function composite() {
   // ratio-correct frame so the photo content matches Instagram's expectations.
   const { src, W, H } = cropToRatio(img, state.ratio);
   const scale = W / 1000;  // text scale baseline
+  const targetRatio = RATIOS[state.ratio];
 
   if (style === 'border') {
-    drawFilmBorder(src, W, H, scale, lines);
+    drawFilmBorder(src, W, H, scale, lines, targetRatio);
   } else if (style === 'strip') {
     drawDataStrip(src, W, H, scale, lines);
   } else {
@@ -963,11 +964,25 @@ function composite() {
 }
 
 // ─── Style 1: Film Border ─────────────────────────────
-function drawFilmBorder(img, W, H, s, lines) {
+function drawFilmBorder(img, W, H, s, lines, targetRatio) {
   const margin = Math.round(40 * s);
   const bottomExtra = Math.round((40 + 14 * Math.max(lines.length, 1)) * s);
-  const cW = W + margin * 2;
-  const cH = H + margin + bottomExtra;
+
+  // Natural canvas if no ratio is forced.
+  let cW = W + margin * 2;
+  let cH = H + margin + bottomExtra;
+
+  // Expand the canvas (never crop the metadata area) so the final output
+  // matches Instagram's expected aspect ratio. Extra cream space goes
+  // around the photo, keeping it shareable without re-cropping.
+  if (targetRatio) {
+    const naturalR = cW / cH;
+    if (naturalR > targetRatio) {
+      cH = Math.round(cW / targetRatio);
+    } else if (naturalR < targetRatio) {
+      cW = Math.round(cH * targetRatio);
+    }
+  }
 
   canvas.width = cW;
   canvas.height = cH;
@@ -976,19 +991,21 @@ function drawFilmBorder(img, W, H, s, lines) {
   ctx.fillStyle = '#F2EDE2';
   ctx.fillRect(0, 0, cW, cH);
 
-  // Subtle film grain at borders
+  // Subtle film grain across the cream paper
   drawNoise(0, 0, cW, cH, 0.02);
 
-  // Image
-  ctx.drawImage(img, margin, margin, W, H);
+  // Photo centered horizontally, top-aligned to the natural margin
+  const imgX = Math.round((cW - W) / 2);
+  const imgY = margin;
+  ctx.drawImage(img, imgX, imgY, W, H);
 
-  // Metadata in bottom margin — two columns
+  // Metadata in bottom margin — aligned to image edges, two columns
   ctx.fillStyle = '#1A1714';
   const fontSize = Math.round(11 * s);
   ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
   ctx.textBaseline = 'top';
 
-  const startY = margin + H + Math.round(24 * s);
+  const startY = imgY + H + Math.round(24 * s);
   const colGap = Math.round(20 * s);
   const labelW = Math.round(60 * s);
   let y = startY;
@@ -996,17 +1013,17 @@ function drawFilmBorder(img, W, H, s, lines) {
 
   for (const line of lines) {
     ctx.fillStyle = '#8A8377';
-    ctx.fillText(line.key, margin, y);
+    ctx.fillText(line.key, imgX, y);
     ctx.fillStyle = '#1A1714';
-    ctx.fillText(line.val, margin + labelW + colGap, y);
+    ctx.fillText(line.val, imgX + labelW + colGap, y);
     y += lineH;
   }
 
-  // Right-side accent — Latent wordmark style
+  // Right-side accent — Latent wordmark style, anchored to image right
   ctx.fillStyle = '#E8923C';
   ctx.font = `italic 300 ${Math.round(18 * s)}px 'Fraunces', serif`;
   ctx.textAlign = 'right';
-  ctx.fillText('Latent.', cW - margin, startY);
+  ctx.fillText('Latent.', imgX + W, startY);
   ctx.textAlign = 'left';
 }
 
