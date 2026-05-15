@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Latent — iPhone Photo Metadata Stamper</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+
+<!-- heic2any 0.0.4 from jsDelivr (cdnjs only has 0.0.1) -->
+
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0E0C0A;
+    --surface: #16130F;
+    --surface-2: #1F1A14;
+    --line: #2B241B;
+    --ink: #F2EDE2;
+    --ink-dim: #B8AE9C;
+    --mute: #6F6759;
+    --amber: #E8923C;
+    --amber-dim: #8A5621;
+    --grain: 0.06;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    /* film grain */
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+    opacity: var(--grain);
+    mix-blend-mode: overlay;
+    z-index: 100;
+  }
+
+  .frame {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+
+  /* ─── Header ──────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+
+  .wordmark {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 44px;
+    font-variation-settings: "opsz" 144;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .wordmark em {
+    font-style: italic;
+    color: var(--amber);
+    font-weight: 400;
+  }
+  .tagline {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  /* ─── Layout ──────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+
+  @media (max-width: 880px) {
+    .grid { grid-template-columns: 1fr; gap: 32px; }
+    .frame { padding: 32px 20px 64px; }
+    .wordmark { font-size: 32px; }
+  }
+
+  /* ─── Drop zone & preview ─────────────────────────── */
+  .stage {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    min-height: 420px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .drop.drag-over {
+    background: var(--surface-2);
+  }
+  .drop-icon {
+    width: 56px;
+    height: 56px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    color: var(--amber);
+  }
+  .drop-title {
+    font-size: 24px;
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    font-style: italic;
+    margin-bottom: 8px;
+  }
+  .drop-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .drop-formats {
+    margin-top: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--amber-dim);
+    letter-spacing: 0.1em;
+  }
+  #file-input { display: none; }
+
+  .preview-wrap {
+    display: none;
+    padding: 24px;
+  }
+  .preview-wrap.active { display: block; }
+  .preview-wrap canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    background: #000;
+  }
+
+  .stage-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    border-top: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.1em;
+  }
+  .stage-toolbar .filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+    color: var(--ink-dim);
+  }
+  .btn-reset {
+    background: none;
+    border: none;
+    color: var(--amber);
+    cursor: pointer;
+    font: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .btn-reset:hover { color: var(--ink); }
+
+  /* ─── Right panel ─────────────────────────────────── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 28px;
+  }
+  .panel + .panel { margin-top: 24px; }
+
+  .panel-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .panel-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* Metadata readout — camera info panel style */
+  .meta-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .meta-list dt {
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    align-self: center;
+  }
+  .meta-list dd {
+    color: var(--ink);
+    text-align: right;
+    font-weight: 500;
+    word-break: break-word;
+  }
+  .meta-list dd.empty {
+    color: var(--mute);
+    font-weight: 400;
+  }
+  .meta-list dd.accent { color: var(--amber); }
+
+  /* Style picker */
+  .style-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .style-opt {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 14px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .style-opt:hover { border-color: var(--amber-dim); }
+  .style-opt.active {
+    border-color: var(--amber);
+    background: rgba(232, 146, 60, 0.08);
+  }
+  .style-thumb {
+    height: 48px;
+    background: #2a2520;
+    border-radius: 2px;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .style-thumb::after {
+    content: '';
+    position: absolute;
+    background: var(--ink-dim);
+  }
+  /* Film border thumb */
+  .thumb-border::after {
+    inset: 4px;
+    background: #3a3128;
+    border: 2px solid var(--ink-dim);
+  }
+  /* Bottom strip thumb */
+  .thumb-strip::after {
+    left: 0; right: 0; bottom: 0; height: 14px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+  }
+  /* Corner card thumb */
+  .thumb-corner::after {
+    right: 4px; bottom: 4px;
+    width: 18px; height: 10px;
+    background: var(--ink-dim);
+  }
+  .style-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+  }
+  .style-opt.active .style-name { color: var(--amber); }
+
+  /* Toggle list for which fields to include */
+  .field-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .toggle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--mute);
+    transition: all 0.15s;
+  }
+  .toggle.on {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: rgba(232, 146, 60, 0.06);
+  }
+  .toggle.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* Download button */
+  .btn-download {
+    width: 100%;
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--amber);
+    color: var(--bg);
+    border: none;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-download:hover:not(:disabled) {
+    background: var(--ink);
+  }
+  .btn-download:disabled {
+    background: var(--surface-2);
+    color: var(--mute);
+    cursor: not-allowed;
+  }
+
+  /* Status line */
+  .status {
+    margin-top: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--mute);
+    text-align: center;
+    letter-spacing: 0.1em;
+    min-height: 12px;
+  }
+  .status.error { color: #d65f5f; }
+
+  /* Loading spinner */
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid var(--mute);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: -2px;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    text-align: center;
+  }
+  footer span { color: var(--amber-dim); }
+</style>
+
+</head>
+<body>
+
+<div class="frame">
+  <header>
+    <div class="wordmark">Latent<em>.</em></div>
+    <div class="tagline">EXIF · Composite · Export</div>
+  </header>
+
+  <div class="grid">
+    <!-- ── Stage ────────────────────────────────────── -->
+    <section class="stage" id="stage">
+      <div class="drop" id="drop">
+        <div class="drop-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M12 16V4M12 4l-5 5M12 4l5 5"/>
+            <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/>
+          </svg>
+        </div>
+        <div class="drop-title">Drop a photo</div>
+        <div class="drop-sub">or click to browse</div>
+        <div class="drop-formats">JPEG · HEIC · PNG · TIFF</div>
+      </div>
+      <div class="preview-wrap" id="preview-wrap">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="stage-toolbar" id="toolbar" style="display:none">
+        <span class="filename" id="filename"></span>
+        <button class="btn-reset" id="reset">Reset</button>
+      </div>
+      <input type="file" id="file-input" accept="image/*,.heic,.heif">
+    </section>
+
+```
+<!-- ── Side panel ──────────────────────────────── -->
+<aside>
+  <div class="panel">
+    <div class="panel-label">Metadata</div>
+    <dl class="meta-list" id="meta-list">
+      <dt>Status</dt><dd class="empty" id="meta-status">awaiting image</dd>
+    </dl>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Overlay Style</div>
+    <div class="style-grid">
+      <div class="style-opt active" data-style="border">
+        <div class="style-thumb thumb-border"></div>
+        <div class="style-name">Film Border</div>
+      </div>
+      <div class="style-opt" data-style="strip">
+        <div class="style-thumb thumb-strip"></div>
+        <div class="style-name">Data Strip</div>
+      </div>
+      <div class="style-opt" data-style="corner">
+        <div class="style-thumb thumb-corner"></div>
+        <div class="style-name">Corner Stamp</div>
+      </div>
+    </div>
+
+    <div class="panel-label" style="margin-top:24px">Fields</div>
+    <div class="field-toggles" id="field-toggles">
+      <span class="toggle on" data-field="date">Date</span>
+      <span class="toggle on" data-field="gps">GPS</span>
+      <span class="toggle on" data-field="place">Place</span>
+      <span class="toggle on" data-field="camera">Camera</span>
+      <span class="toggle on" data-field="lens">Lens</span>
+      <span class="toggle on" data-field="exposure">Exposure</span>
+    </div>
+
+    <button class="btn-download" id="download" disabled>Export Stamped Image</button>
+    <div class="status" id="status"></div>
+  </div>
+</aside>
+```
+
+  </div>
+
+  <footer>
+    All processing happens in your browser <span>·</span> nothing is uploaded
+  </footer>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────
+const state = {
+  image: null,        // HTMLImageElement of the source
+  filename: null,
+  exif: null,         // raw EXIF dict
+  meta: null,         // formatted metadata
+  style: 'border',
+  fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
+};
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+
+// ─── File handling ────────────────────────────────────
+const drop = $('drop');
+const fileInput = $('file-input');
+
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag-over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+drop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  drop.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+$('reset').addEventListener('click', () => {
+  state.image = null;
+  state.exif = null;
+  state.meta = null;
+  state.filename = null;
+  $('preview-wrap').classList.remove('active');
+  $('toolbar').style.display = 'none';
+  drop.style.display = 'flex';
+  $('download').disabled = true;
+  $('status').textContent = '';
+  renderMetaPlaceholder();
+  fileInput.value = '';
+});
+
+async function handleFile(file) {
+  console.log('[stamper] file:', file.name, file.type, file.size + ' bytes');
+  state.filename = file.name;
+  setStatus('reading file…', true);
+
+  // ─── Library sanity check ──────────────────────────
+  if (typeof EXIF === 'undefined') {
+    return setStatus('exif-js failed to load (check network)', false, true);
+  }
+
+  // ─── Try native decode first ───────────────────────
+  // Safari decodes HEIC natively. Most browsers handle JPEG/PNG/WebP.
+  // Let the browser try before we reach for heic2any.
+  let bitmap = null;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    console.log('[stamper] native decode OK', bitmap.width + 'x' + bitmap.height);
+  } catch (nativeErr) {
+    console.log('[stamper] native decode failed:', nativeErr.message);
+  }
+
+  // ─── HEIC fallback path ────────────────────────────
+  const looksHeic = /\.(heic|heif)$/i.test(file.name) || /heic|heif/i.test(file.type);
+  let workingBlob = file;
+
+  if (!bitmap && looksHeic) {
+    if (typeof heic2any === 'undefined') {
+      return setStatus('heic2any failed to load — try a JPEG export', false, true);
+    }
+    try {
+      setStatus('converting HEIC…', true);
+      let result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
+      // heic2any returns Blob[] for multi-image HEIC (Live Photos, bursts)
+      if (Array.isArray(result)) {
+        console.log('[stamper] heic2any returned ' + result.length + ' images, using first');
+        result = result[0];
+      }
+      workingBlob = result;
+      bitmap = await createImageBitmap(result, { imageOrientation: 'from-image' });
+      console.log('[stamper] HEIC→JPEG decode OK', bitmap.width + 'x' + bitmap.height);
+    } catch (err) {
+      console.error('[stamper] HEIC conversion error:', err);
+      return setStatus('HEIC conversion failed: ' + (err.message || err), false, true);
+    }
+  }
+
+  if (!bitmap) {
+    return setStatus('could not decode image — unsupported format?', false, true);
+  }
+
+  // ─── EXIF read ─────────────────────────────────────
+  // exif-js parses JPEG markers. For HEIC we still pass the *original* file —
+  // exif-js can extract the embedded EXIF block from HEIC in many cases.
+  try {
+    await readExif(file);
+  } catch (e) {
+    console.warn('[stamper] EXIF read failed (continuing):', e);
+    state.meta = {};
+    renderMeta();
+  }
+
+  state.image = bitmap;
+  showPreview();
+  composite();
+  $('download').disabled = false;
+  setStatus('ready · ' + bitmap.width + '×' + bitmap.height);
+
+  // ─── Reverse geocode (async, non-blocking) ─────────
+  if (state.meta && state.meta.lat != null && state.meta.lon != null) {
+    reverseGeocode(state.meta.lat, state.meta.lon);
+  }
+}
+
+// ─── Reverse geocoding ────────────────────────────────
+// Tries Nominatim first (richer address detail), falls back to BigDataCloud
+// (purpose-built for client-side, no key, more lenient with browser origins).
+// Both are free. For production / Vieira: use your own Nominatim or a paid API.
+async function reverseGeocode(lat, lon) {
+  console.log('[stamper] geocoding', lat, lon);
+  setStatus('resolving location…', true);
+
+  const providers = [
+    {
+      name: 'Nominatim',
+      url: `https://nominatim.openstreetmap.org/reverse`
+         + `?lat=${lat}&lon=${lon}&format=json&zoom=14&addressdetails=1`
+         + `&accept-language=en`,
+      parse: (d) => {
+        const a = d.address || {};
+        return {
+          locality: a.city || a.town || a.village || a.hamlet
+                  || a.municipality || a.county || a.state_district || a.state,
+          region: a.state,
+          country: a.country,
+          full: d.display_name,
+          raw: a,
+        };
+      },
+    },
+    {
+      name: 'BigDataCloud',
+      url: `https://api.bigdatacloud.net/data/reverse-geocode-client`
+         + `?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
+      parse: (d) => ({
+        locality: d.city || d.locality || d.localityInfo?.administrative?.[3]?.name
+                || d.principalSubdivision,
+        region: d.principalSubdivision,
+        country: d.countryName,
+        full: [d.city, d.principalSubdivision, d.countryName].filter(Boolean).join(', '),
+        raw: d,
+      }),
+    },
+  ];
+
+  let lastError = null;
+  for (const p of providers) {
+    try {
+      console.log(`[stamper] trying ${p.name}`);
+      const res = await fetch(p.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      console.log(`[stamper] ${p.name} returned:`, data);
+
+      const parsed = p.parse(data);
+      if (!parsed.locality && !parsed.country) {
+        throw new Error('no usable place data');
+      }
+
+      const region = parsed.region && parsed.region !== parsed.locality ? parsed.region : null;
+      const placeShort = (parsed.locality && parsed.country)
+        ? `${parsed.locality} · ${parsed.country}`
+        : [parsed.locality, region, parsed.country].filter(Boolean).slice(0, 2).join(' · ');
+
+      state.meta.place = placeShort;
+      state.meta.placeFull = parsed.full;
+      state.meta.placeAddress = parsed.raw;
+
+      renderMeta();
+      if (state.fields.place) composite();
+      setStatus(`ready · place via ${p.name}`);
+      return;
+    } catch (err) {
+      console.warn(`[stamper] ${p.name} failed: ${err.message}`);
+      lastError = err;
+    }
+  }
+
+  setStatus('geocoding failed: ' + (lastError?.message || 'all providers down'), false, true);
+}
+
+function readExif(file) {
+  return new Promise((resolve) => {
+    EXIF.getData(file, function() {
+      const allTags = EXIF.getAllTags(this);
+      state.exif = allTags;
+      state.meta = formatMeta(allTags);
+      renderMeta();
+      resolve();
+    });
+  });
+}
+
+// ─── EXIF formatting ──────────────────────────────────
+function formatMeta(e) {
+  if (!e) return {};
+  const m = {};
+
+  // Date
+  const dt = e.DateTimeOriginal || e.DateTime || e.CreateDate;
+  if (dt) {
+    // EXIF format: "YYYY:MM:DD HH:MM:SS"
+    const [d, t] = dt.split(' ');
+    if (d && t) {
+      const [Y, M, D] = d.split(':');
+      const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      m.dateShort = `${D} ${months[parseInt(M)-1]} ${Y}`;
+      m.dateLong = `${D} ${months[parseInt(M)-1]} ${Y} · ${t.slice(0,5)}`;
+      m.dateRaw = dt;
+    }
+  }
+
+  // GPS
+  if (e.GPSLatitude && e.GPSLongitude) {
+    const lat = dmsToDecimal(e.GPSLatitude, e.GPSLatitudeRef);
+    const lon = dmsToDecimal(e.GPSLongitude, e.GPSLongitudeRef);
+    m.lat = lat;
+    m.lon = lon;
+    m.gpsShort = `${formatCoord(lat, e.GPSLatitudeRef)}  ${formatCoord(lon, e.GPSLongitudeRef)}`;
+    m.gpsDecimal = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    if (e.GPSAltitude) {
+      const alt = (e.GPSAltitude && e.GPSAltitude.numerator !== undefined)
+        ? e.GPSAltitude.numerator / e.GPSAltitude.denominator
+        : Number(e.GPSAltitude);
+      m.altitude = `${alt.toFixed(0)} m`;
+    }
+  }
+
+  // Camera
+  if (e.Make || e.Model) {
+    m.camera = `${e.Make || ''} ${e.Model || ''}`.trim().replace(/^Apple\s+/i, '');
+  }
+
+  // Lens
+  if (e.LensModel) {
+    m.lens = e.LensModel;
+  } else if (e.undefined) {
+    // some EXIF parsers stash lens info oddly
+  }
+
+  // Exposure: f/N · 1/Ns · ISO N · Nmm
+  const parts = [];
+  if (e.FNumber) {
+    const f = (typeof e.FNumber === 'number') ? e.FNumber : (e.FNumber.numerator / e.FNumber.denominator);
+    parts.push(`ƒ/${f.toFixed(1)}`);
+  }
+  if (e.ExposureTime) {
+    const t = (typeof e.ExposureTime === 'number') ? e.ExposureTime : (e.ExposureTime.numerator / e.ExposureTime.denominator);
+    parts.push(t < 1 ? `1/${Math.round(1/t)}s` : `${t.toFixed(1)}s`);
+  }
+  if (e.ISOSpeedRatings) {
+    parts.push(`ISO ${e.ISOSpeedRatings}`);
+  }
+  if (e.FocalLength) {
+    const fl = (typeof e.FocalLength === 'number') ? e.FocalLength : (e.FocalLength.numerator / e.FocalLength.denominator);
+    parts.push(`${fl.toFixed(0)}mm`);
+  }
+  m.exposure = parts.join(' · ');
+
+  return m;
+}
+
+function dmsToDecimal(dms, ref) {
+  if (!dms || dms.length < 3) return null;
+  const dec = dms[0] + dms[1]/60 + dms[2]/3600;
+  return (ref === 'S' || ref === 'W') ? -dec : dec;
+}
+
+function formatCoord(dec, ref) {
+  if (dec === null) return '—';
+  const abs = Math.abs(dec);
+  const d = Math.floor(abs);
+  const mFloat = (abs - d) * 60;
+  const m = Math.floor(mFloat);
+  const s = ((mFloat - m) * 60).toFixed(1);
+  return `${d}°${m}'${s}"${ref}`;
+}
+
+// ─── Metadata UI ──────────────────────────────────────
+function renderMetaPlaceholder() {
+  $('meta-list').innerHTML = `<dt>Status</dt><dd class="empty" id="meta-status">awaiting image</dd>`;
+}
+
+function renderMeta() {
+  const m = state.meta || {};
+  const rows = [];
+
+  const row = (label, val, accent) => {
+    if (!val) {
+      rows.push(`<dt>${label}</dt><dd class="empty">—</dd>`);
+    } else {
+      rows.push(`<dt>${label}</dt><dd${accent ? ' class="accent"' : ''}>${val}</dd>`);
+    }
+  };
+
+  row('Date', m.dateLong);
+  row('GPS', m.gpsShort, true);
+  if (m.altitude) row('Altitude', m.altitude);
+  row('Place', m.place, true);
+  row('Camera', m.camera);
+  row('Lens', m.lens);
+  row('Exposure', m.exposure);
+
+  $('meta-list').innerHTML = rows.join('');
+
+  // Disable toggles for fields with no data;
+  // re-enable .on when async fields (place) arrive later.
+  document.querySelectorAll('.toggle').forEach(t => {
+    const f = t.dataset.field;
+    const has =
+      (f === 'date' && m.dateShort) ||
+      (f === 'gps' && m.gpsShort) ||
+      (f === 'place' && m.place) ||
+      (f === 'camera' && m.camera) ||
+      (f === 'lens' && m.lens) ||
+      (f === 'exposure' && m.exposure);
+    t.classList.toggle('disabled', !has);
+    if (!has) {
+      t.classList.remove('on');
+    } else if (state.fields[f]) {
+      t.classList.add('on');
+    }
+  });
+}
+
+// ─── Style picker ─────────────────────────────────────
+document.querySelectorAll('.style-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.style-opt').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    state.style = opt.dataset.style;
+    if (state.image) composite();
+  });
+});
+
+document.querySelectorAll('.toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    if (t.classList.contains('disabled')) return;
+    t.classList.toggle('on');
+    state.fields[t.dataset.field] = t.classList.contains('on');
+    if (state.image) composite();
+  });
+});
+
+// ─── Compositing ──────────────────────────────────────
+function showPreview() {
+  drop.style.display = 'none';
+  $('preview-wrap').classList.add('active');
+  $('toolbar').style.display = 'flex';
+  $('filename').textContent = state.filename;
+}
+
+function getActiveLines() {
+  const m = state.meta || {};
+  const f = state.fields;
+  const lines = [];
+  if (f.date && m.dateLong) lines.push({ key: 'DATE', val: m.dateLong });
+  if (f.gps && m.gpsShort) lines.push({ key: 'COORD', val: m.gpsShort });
+  if (f.place && m.place) lines.push({ key: 'PLACE', val: m.place });
+  if (f.camera && m.camera) lines.push({ key: 'BODY', val: m.camera });
+  if (f.lens && m.lens) lines.push({ key: 'LENS', val: m.lens });
+  if (f.exposure && m.exposure) lines.push({ key: 'EXP', val: m.exposure });
+  return lines;
+}
+
+function composite() {
+  const img = state.image;
+  if (!img) return;
+
+  const lines = getActiveLines();
+  const style = state.style;
+
+  // ImageBitmap has .width/.height (not .naturalWidth/.naturalHeight)
+  const W = img.width;
+  const H = img.height;
+  const scale = W / 1000;  // text scale baseline
+
+  if (style === 'border') {
+    drawFilmBorder(img, W, H, scale, lines);
+  } else if (style === 'strip') {
+    drawDataStrip(img, W, H, scale, lines);
+  } else {
+    drawCornerStamp(img, W, H, scale, lines);
+  }
+}
+
+// ─── Style 1: Film Border ─────────────────────────────
+function drawFilmBorder(img, W, H, s, lines) {
+  const margin = Math.round(40 * s);
+  const bottomExtra = Math.round((40 + 14 * Math.max(lines.length, 1)) * s);
+  const cW = W + margin * 2;
+  const cH = H + margin + bottomExtra;
+
+  canvas.width = cW;
+  canvas.height = cH;
+
+  // Cream/film paper background
+  ctx.fillStyle = '#F2EDE2';
+  ctx.fillRect(0, 0, cW, cH);
+
+  // Subtle film grain at borders
+  drawNoise(0, 0, cW, cH, 0.02);
+
+  // Image
+  ctx.drawImage(img, margin, margin, W, H);
+
+  // Metadata in bottom margin — two columns
+  ctx.fillStyle = '#1A1714';
+  const fontSize = Math.round(11 * s);
+  ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
+  ctx.textBaseline = 'top';
+
+  const startY = margin + H + Math.round(24 * s);
+  const colGap = Math.round(20 * s);
+  const labelW = Math.round(60 * s);
+  let y = startY;
+  const lineH = Math.round(16 * s);
+
+  for (const line of lines) {
+    ctx.fillStyle = '#8A8377';
+    ctx.fillText(line.key, margin, y);
+    ctx.fillStyle = '#1A1714';
+    ctx.fillText(line.val, margin + labelW + colGap, y);
+    y += lineH;
+  }
+
+  // Right-side accent — Latent wordmark style
+  ctx.fillStyle = '#E8923C';
+  ctx.font = `italic 300 ${Math.round(18 * s)}px 'Fraunces', serif`;
+  ctx.textAlign = 'right';
+  ctx.fillText('Latent.', cW - margin, startY);
+  ctx.textAlign = 'left';
+}
+
+// ─── Style 2: Data Strip ──────────────────────────────
+function drawDataStrip(img, W, H, s, lines) {
+  canvas.width = W;
+  canvas.height = H;
+  ctx.drawImage(img, 0, 0);
+
+  // Gradient strip at bottom
+  const stripH = Math.round((30 + 16 * lines.length) * s);
+  const grad = ctx.createLinearGradient(0, H - stripH * 1.5, 0, H);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.85)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H - stripH * 1.5, W, stripH * 1.5);
+
+  // Text
+  const fontSize = Math.round(13 * s);
+  ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = '#F2EDE2';
+
+  const padX = Math.round(28 * s);
+  const padY = Math.round(20 * s);
+  const lineH = Math.round(18 * s);
+  let y = H - padY;
+
+  // Reverse so the first line ends up on top
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    ctx.fillStyle = '#E8923C';
+    ctx.fillText(line.key, padX, y);
+    ctx.fillStyle = '#F2EDE2';
+    const keyW = ctx.measureText(line.key).width;
+    ctx.fillText(line.val, padX + keyW + Math.round(12 * s), y);
+    y -= lineH;
+  }
+
+  // Tiny tick mark for character
+  ctx.strokeStyle = '#E8923C';
+  ctx.lineWidth = Math.max(2, Math.round(2 * s));
+  ctx.beginPath();
+  ctx.moveTo(padX, H - padY + Math.round(6 * s));
+  ctx.lineTo(padX + Math.round(20 * s), H - padY + Math.round(6 * s));
+  ctx.stroke();
+}
+
+// ─── Style 3: Corner Stamp ────────────────────────────
+function drawCornerStamp(img, W, H, s, lines) {
+  canvas.width = W;
+  canvas.height = H;
+  ctx.drawImage(img, 0, 0);
+
+  const padX = Math.round(20 * s);
+  const padY = Math.round(16 * s);
+  const fontSize = Math.round(11 * s);
+  const lineH = Math.round(15 * s);
+
+  // Measure
+  ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
+  let maxW = 0;
+  for (const line of lines) {
+    const t = `${line.key}  ${line.val}`;
+    maxW = Math.max(maxW, ctx.measureText(t).width);
+  }
+
+  const boxW = maxW + padX * 2;
+  const boxH = lineH * lines.length + padY * 2;
+  const boxX = W - boxW - Math.round(24 * s);
+  const boxY = H - boxH - Math.round(24 * s);
+
+  // Card
+  ctx.fillStyle = 'rgba(14, 12, 10, 0.78)';
+  roundRect(boxX, boxY, boxW, boxH, Math.round(4 * s));
+  ctx.fill();
+
+  // Thin amber border
+  ctx.strokeStyle = 'rgba(232, 146, 60, 0.5)';
+  ctx.lineWidth = Math.max(1, Math.round(1 * s));
+  roundRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1, Math.round(4 * s));
+  ctx.stroke();
+
+  // Text
+  ctx.textBaseline = 'top';
+  let y = boxY + padY;
+  for (const line of lines) {
+    ctx.fillStyle = '#E8923C';
+    ctx.fillText(line.key, boxX + padX, y);
+    ctx.fillStyle = '#F2EDE2';
+    const keyW = ctx.measureText(line.key).width;
+    ctx.fillText(line.val, boxX + padX + keyW + Math.round(10 * s), y);
+    y += lineH;
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawNoise(x, y, w, h, alpha) {
+  const imgData = ctx.getImageData(x, y, w, h);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * 30 * alpha;
+    d[i] = Math.max(0, Math.min(255, d[i] + n));
+    d[i+1] = Math.max(0, Math.min(255, d[i+1] + n));
+    d[i+2] = Math.max(0, Math.min(255, d[i+2] + n));
+  }
+  ctx.putImageData(imgData, x, y);
+}
+
+// ─── Download ─────────────────────────────────────────
+$('download').addEventListener('click', () => {
+  if (!state.image) return;
+  canvas.toBlob((blob) => {
+    if (!blob) { setStatus('export failed', false, true); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const base = (state.filename || 'photo').replace(/\.[^.]+$/, '');
+    a.download = `${base}_stamped.jpg`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus('exported · ' + a.download);
+  }, 'image/jpeg', 0.92);
+});
+
+// ─── Status helper ────────────────────────────────────
+function setStatus(msg, loading = false, error = false) {
+  const el = $('status');
+  el.classList.toggle('error', error);
+  el.innerHTML = (loading ? '<span class="spinner"></span>' : '') + msg;
+}
+
+renderMetaPlaceholder();
+</script>
+
+</body>
+</html>
