@@ -474,6 +474,15 @@
       </div>
     </div>
 
+    <div class="panel-label" style="margin-top:24px">Aspect Ratio</div>
+    <div class="field-toggles" id="ratio-toggles">
+      <span class="toggle on" data-ratio="original">Original</span>
+      <span class="toggle" data-ratio="1:1">1:1 Square</span>
+      <span class="toggle" data-ratio="4:5">4:5 Portrait</span>
+      <span class="toggle" data-ratio="9:16">9:16 Story</span>
+      <span class="toggle" data-ratio="16:9">16:9 Landscape</span>
+    </div>
+
     <div class="panel-label" style="margin-top:24px">Fields</div>
     <div class="field-toggles" id="field-toggles">
       <span class="toggle on" data-field="date">Date</span>
@@ -505,7 +514,17 @@ const state = {
   exif: null,         // raw EXIF dict
   meta: null,         // formatted metadata
   style: 'border',
+  ratio: 'original',
   fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
+};
+
+// Instagram-friendly aspect ratios (width / height). null = keep original.
+const RATIOS = {
+  'original': null,
+  '1:1':  1,
+  '4:5':  4 / 5,
+  '9:16': 9 / 16,
+  '16:9': 16 / 9,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -533,6 +552,10 @@ $('reset').addEventListener('click', () => {
   state.exif = null;
   state.meta = null;
   state.filename = null;
+  state.ratio = 'original';
+  document.querySelectorAll('#ratio-toggles .toggle').forEach(o => {
+    o.classList.toggle('on', o.dataset.ratio === 'original');
+  });
   $('preview-wrap').classList.remove('active');
   $('toolbar').style.display = 'none';
   drop.style.display = 'flex';
@@ -818,7 +841,7 @@ function renderMeta() {
 
   // Disable toggles for fields with no data;
   // re-enable .on when async fields (place) arrive later.
-  document.querySelectorAll('.toggle').forEach(t => {
+  document.querySelectorAll('#field-toggles .toggle').forEach(t => {
     const f = t.dataset.field;
     const has =
       (f === 'date' && m.dateShort) ||
@@ -846,11 +869,20 @@ document.querySelectorAll('.style-opt').forEach(opt => {
   });
 });
 
-document.querySelectorAll('.toggle').forEach(t => {
+document.querySelectorAll('#field-toggles .toggle').forEach(t => {
   t.addEventListener('click', () => {
     if (t.classList.contains('disabled')) return;
     t.classList.toggle('on');
     state.fields[t.dataset.field] = t.classList.contains('on');
+    if (state.image) composite();
+  });
+});
+
+document.querySelectorAll('#ratio-toggles .toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('#ratio-toggles .toggle').forEach(o => o.classList.remove('on'));
+    t.classList.add('on');
+    state.ratio = t.dataset.ratio;
     if (state.image) composite();
   });
 });
@@ -876,6 +908,39 @@ function getActiveLines() {
   return lines;
 }
 
+// Center-crop the source image to the selected aspect ratio. Returns the
+// source image untouched when ratio = original or already matches.
+function cropToRatio(img, ratioName) {
+  const r = RATIOS[ratioName];
+  const W = img.width;
+  const H = img.height;
+  if (!r) return { src: img, W, H };
+
+  const imgR = W / H;
+  if (Math.abs(imgR - r) < 0.001) return { src: img, W, H };
+
+  let sx, sy, sw, sh;
+  if (r > imgR) {
+    // target wider than source: crop top/bottom
+    sw = W;
+    sh = Math.round(W / r);
+    sx = 0;
+    sy = Math.round((H - sh) / 2);
+  } else {
+    // target taller than source: crop sides
+    sh = H;
+    sw = Math.round(H * r);
+    sy = 0;
+    sx = Math.round((W - sw) / 2);
+  }
+
+  const off = document.createElement('canvas');
+  off.width = sw;
+  off.height = sh;
+  off.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  return { src: off, W: sw, H: sh };
+}
+
 function composite() {
   const img = state.image;
   if (!img) return;
@@ -883,17 +948,17 @@ function composite() {
   const lines = getActiveLines();
   const style = state.style;
 
-  // ImageBitmap has .width/.height (not .naturalWidth/.naturalHeight)
-  const W = img.width;
-  const H = img.height;
+  // Crop to target aspect ratio first; the style overlay then draws on the
+  // ratio-correct frame so the photo content matches Instagram's expectations.
+  const { src, W, H } = cropToRatio(img, state.ratio);
   const scale = W / 1000;  // text scale baseline
 
   if (style === 'border') {
-    drawFilmBorder(img, W, H, scale, lines);
+    drawFilmBorder(src, W, H, scale, lines);
   } else if (style === 'strip') {
-    drawDataStrip(img, W, H, scale, lines);
+    drawDataStrip(src, W, H, scale, lines);
   } else {
-    drawCornerStamp(img, W, H, scale, lines);
+    drawCornerStamp(src, W, H, scale, lines);
   }
 }
 
