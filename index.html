@@ -485,6 +485,10 @@
       <span class="toggle" data-ratio="16:9">16:9</span>
       <span class="toggle" data-ratio="9:16">9:16 Story</span>
     </div>
+    <div class="field-toggles" id="ratio-mode-toggles" style="margin-top:10px">
+      <span class="toggle on" data-mode="crop">Crop</span>
+      <span class="toggle" data-mode="fit">Fit (no crop)</span>
+    </div>
 
     <div class="panel-label" style="margin-top:24px">Fields</div>
     <div class="field-toggles" id="field-toggles">
@@ -518,6 +522,7 @@ const state = {
   meta: null,         // formatted metadata
   style: 'border',
   ratio: 'original',
+  ratioMode: 'crop', // 'crop' = center-crop to fill (some image lost); 'fit' = letterbox/pillarbox (no loss)
   fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
 };
 
@@ -547,8 +552,12 @@ $('reset').addEventListener('click', () => {
   state.meta = null;
   state.filename = null;
   state.ratio = 'original';
+  state.ratioMode = 'crop';
   document.querySelectorAll('#ratio-toggles .toggle').forEach(o => {
     o.classList.toggle('on', o.dataset.ratio === 'original');
+  });
+  document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => {
+    o.classList.toggle('on', o.dataset.mode === 'crop');
   });
   $('preview-wrap').classList.remove('active');
   $('toolbar').style.display = 'none';
@@ -882,6 +891,16 @@ document.querySelectorAll('#ratio-toggles .toggle').forEach(t => {
   });
 });
 
+// Crop vs Fit (letterbox) — radio behavior
+document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => o.classList.remove('on'));
+    t.classList.add('on');
+    state.ratioMode = t.dataset.mode;
+    if (state.image) composite();
+  });
+});
+
 // ─── Compositing ──────────────────────────────────────
 function showPreview() {
   drop.style.display = 'none';
@@ -909,35 +928,66 @@ function composite() {
 
   const lines = getActiveLines();
   const style = state.style;
-  const crop = getCrop(img, state.ratio);
+  const layout = getLayout(img, state.ratio, state.ratioMode);
 
-  // Output dimensions are the cropped dimensions
-  const W = crop.sW;
-  const H = crop.sH;
+  // "Photo area" dimensions — what each style treats as the image tile.
+  const W = layout.frameW;
+  const H = layout.frameH;
   const scale = W / 1000;  // text scale baseline
-  // Final canvas should match the cropped image's ratio so the export is
-  // Instagram-ready (no re-crop on upload). null = keep the style's natural size.
+  // Final canvas should match the photo area's ratio so the export is
+  // ratio-exact (no re-crop on upload). null = keep the style's natural size.
   const targetRatio = state.ratio === 'original' ? null : W / H;
 
   if (style === 'border') {
-    drawFilmBorder(img, crop, W, H, scale, lines, targetRatio);
+    drawFilmBorder(img, layout, W, H, scale, lines, targetRatio);
   } else if (style === 'strip') {
-    drawDataStrip(img, crop, W, H, scale, lines);
+    drawDataStrip(img, layout, W, H, scale, lines);
   } else {
-    drawCornerStamp(img, crop, W, H, scale, lines);
+    drawCornerStamp(img, layout, W, H, scale, lines);
   }
 }
 
-// Center-crop the source image to the target aspect ratio.
-function getCrop(img, ratio) {
+// Compute how to place the source image inside a frame at the chosen ratio.
+//   crop mode: center-crop the image to fill the frame (some image lost)
+//   fit mode:  letterbox/pillarbox so the full image is preserved (bars added)
+// Returns the source rect to sample from the image plus the frame size and the
+// image's position/size within that frame.
+function getLayout(img, ratio, mode) {
   const iW = img.width;
   const iH = img.height;
+
   if (!ratio || ratio === 'original') {
-    return { sx: 0, sy: 0, sW: iW, sH: iH };
+    return {
+      sx: 0, sy: 0, sW: iW, sH: iH,
+      frameW: iW, frameH: iH,
+      imgX: 0, imgY: 0, imgW: iW, imgH: iH,
+    };
   }
+
   const [a, b] = ratio.split(':').map(Number);
   const target = a / b;
   const current = iW / iH;
+
+  if (mode === 'fit') {
+    // Use the full source; expand the frame to target ratio with bars.
+    let frameW, frameH;
+    if (current > target) {
+      frameW = iW;
+      frameH = Math.round(iW / target);
+    } else {
+      frameH = iH;
+      frameW = Math.round(iH * target);
+    }
+    return {
+      sx: 0, sy: 0, sW: iW, sH: iH,
+      frameW, frameH,
+      imgX: Math.round((frameW - iW) / 2),
+      imgY: Math.round((frameH - iH) / 2),
+      imgW: iW, imgH: iH,
+    };
+  }
+
+  // crop mode: center-crop source so the frame is target ratio, no bars.
   let sW, sH, sx, sy;
   if (current > target) {
     sH = iH;
@@ -950,11 +1000,15 @@ function getCrop(img, ratio) {
     sx = 0;
     sy = Math.round((iH - sH) / 2);
   }
-  return { sx, sy, sW, sH };
+  return {
+    sx, sy, sW, sH,
+    frameW: sW, frameH: sH,
+    imgX: 0, imgY: 0, imgW: sW, imgH: sH,
+  };
 }
 
 // ─── Style 1: Film Border ─────────────────────────────
-function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
+function drawFilmBorder(img, layout, W, H, s, lines, targetRatio) {
   const margin = Math.round(40 * s);
   const bottomExtra = Math.round((40 + 14 * Math.max(lines.length, 1)) * s);
 
@@ -984,19 +1038,24 @@ function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
   // Subtle film grain across the cream paper
   drawNoise(0, 0, cW, cH, 0.02);
 
-  // Photo centered horizontally (canvas may be wider than W + 2*margin
-  // when targetRatio expansion kicks in), top-aligned to the natural margin
-  const imgX = Math.round((cW - W) / 2);
-  const imgY = margin;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, imgX, imgY, W, H);
+  // Photo tile centered horizontally (canvas may be wider than W + 2*margin
+  // when targetRatio expansion kicks in), top-aligned to the natural margin.
+  // In fit mode the image is letterboxed inside the tile; cream shows through.
+  const tileX = Math.round((cW - W) / 2);
+  const tileY = margin;
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    tileX + layout.imgX, tileY + layout.imgY, layout.imgW, layout.imgH,
+  );
 
-  // Metadata in bottom margin — aligned to image edges, two columns
+  // Metadata in bottom margin — aligned to tile edges, two columns
   ctx.fillStyle = '#1A1714';
   const fontSize = Math.round(11 * s);
   ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
   ctx.textBaseline = 'top';
 
-  const startY = imgY + H + Math.round(24 * s);
+  const startY = tileY + H + Math.round(24 * s);
   const colGap = Math.round(20 * s);
   const labelW = Math.round(60 * s);
   let y = startY;
@@ -1004,25 +1063,32 @@ function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
 
   for (const line of lines) {
     ctx.fillStyle = '#8A8377';
-    ctx.fillText(line.key, imgX, y);
+    ctx.fillText(line.key, tileX, y);
     ctx.fillStyle = '#1A1714';
-    ctx.fillText(line.val, imgX + labelW + colGap, y);
+    ctx.fillText(line.val, tileX + labelW + colGap, y);
     y += lineH;
   }
 
-  // Right-side accent — Latent wordmark style, anchored to image right
+  // Right-side accent — Latent wordmark, anchored to tile right
   ctx.fillStyle = '#E8923C';
   ctx.font = `italic 300 ${Math.round(18 * s)}px 'Fraunces', serif`;
   ctx.textAlign = 'right';
-  ctx.fillText('Latent.', imgX + W, startY);
+  ctx.fillText('Latent.', tileX + W, startY);
   ctx.textAlign = 'left';
 }
 
 // ─── Style 2: Data Strip ──────────────────────────────
-function drawDataStrip(img, crop, W, H, s, lines) {
+function drawDataStrip(img, layout, W, H, s, lines) {
   canvas.width = W;
   canvas.height = H;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, 0, 0, W, H);
+  // Black backdrop fills any letterbox/pillarbox bars in fit mode
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
 
   // Gradient strip at bottom
   const stripH = Math.round((30 + 16 * lines.length) * s);
@@ -1064,10 +1130,17 @@ function drawDataStrip(img, crop, W, H, s, lines) {
 }
 
 // ─── Style 3: Corner Stamp ────────────────────────────
-function drawCornerStamp(img, crop, W, H, s, lines) {
+function drawCornerStamp(img, layout, W, H, s, lines) {
   canvas.width = W;
   canvas.height = H;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, 0, 0, W, H);
+  // Black backdrop fills any letterbox/pillarbox bars in fit mode
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
 
   const padX = Math.round(20 * s);
   const padY = Math.round(16 * s);
