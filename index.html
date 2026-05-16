@@ -306,7 +306,7 @@
   /* Style picker */
   .style-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
   .style-opt {
@@ -324,7 +324,7 @@
     background: rgba(232, 146, 60, 0.08);
   }
   .style-thumb {
-    height: 42px;
+    height: 48px;
     background: #2a2520;
     border-radius: 6px;
     margin-bottom: 8px;
@@ -352,6 +352,19 @@
     right: 4px; bottom: 4px;
     width: 18px; height: 10px;
     background: var(--ink-dim);
+  }
+  /* Journal thumb — left-aligned stacked text overlay */
+  .thumb-journal {
+    background: linear-gradient(90deg, rgba(0,0,0,0.55), transparent 60%), #2a2520;
+  }
+  .thumb-journal::after {
+    left: 6px; top: 8px;
+    width: 16px; height: 32px;
+    background:
+      linear-gradient(var(--amber) 0 2px, transparent 2px 6px,
+                      var(--ink) 6px 14px,    transparent 14px 18px,
+                      var(--amber-dim) 18px 19px, transparent 19px 22px,
+                      var(--ink-dim) 22px 28px, transparent 28px);
   }
   .style-name {
     font-family: 'JetBrains Mono', monospace;
@@ -566,6 +579,10 @@
       <div class="style-opt active" data-style="border">
         <div class="style-thumb thumb-border"></div>
         <div class="style-name">Film Border</div>
+      </div>
+      <div class="style-opt" data-style="journal">
+        <div class="style-thumb thumb-journal"></div>
+        <div class="style-name">Journal</div>
       </div>
       <div class="style-opt" data-style="strip">
         <div class="style-thumb thumb-strip"></div>
@@ -1047,6 +1064,8 @@ function composite() {
     drawFilmBorder(img, layout, W, H, scale, lines, targetRatio);
   } else if (style === 'strip') {
     drawDataStrip(img, layout, W, H, scale, lines);
+  } else if (style === 'journal') {
+    drawJournal(img, layout, W, H, scale);
   } else {
     drawCornerStamp(img, layout, W, H, scale, lines);
   }
@@ -1286,6 +1305,124 @@ function drawCornerStamp(img, layout, W, H, s, lines) {
     const keyW = ctx.measureText(line.key).width;
     ctx.fillText(line.val, boxX + padX + keyW + Math.round(10 * s), y);
     y += lineH;
+  }
+}
+
+// ─── Style 4: Journal ─────────────────────────────────
+// Editorial-style overlay: big serif headings + small uppercase mono labels
+// on a soft dark gradient anchored to the left edge. Scales with the photo's
+// shorter side so the typography stays balanced on landscape and portrait.
+function drawJournal(img, layout, W, H, sIgnored) {
+  canvas.width = W;
+  canvas.height = H;
+
+  // Black backdrop fills any fit-mode letterbox/pillarbox bars
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
+
+  // Soft dark gradient anchored to the left for text readability.
+  // Stops short on very wide images so the photo still breathes.
+  const overlayW = Math.min(Math.round(W * 0.62), Math.round(W * 0.55 + H * 0.2));
+  const grad = ctx.createLinearGradient(0, 0, overlayW, 0);
+  grad.addColorStop(0,   'rgba(0, 0, 0, 0.78)');
+  grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.35)');
+  grad.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, overlayW, H);
+
+  // Scale typography off the shorter side so it stays editorial on any ratio.
+  const s = Math.min(W, H) / 1000;
+  const m = state.meta || {};
+  const f = state.fields;
+  const padX = Math.round(56 * s);
+  let y     = Math.round(64 * s);
+
+  ctx.textBaseline = 'top';
+  const drawSep = () => {
+    ctx.strokeStyle = 'rgba(232, 146, 60, 0.55)';
+    ctx.lineWidth = Math.max(1, Math.round(1.2 * s));
+    ctx.beginPath();
+    ctx.moveTo(padX, y);
+    ctx.lineTo(padX + Math.round(72 * s), y);
+    ctx.stroke();
+    y += Math.round(28 * s);
+  };
+  const drawLabel = (txt) => {
+    ctx.fillStyle = '#E8923C';
+    ctx.font = `600 ${Math.round(11 * s)}px 'JetBrains Mono', monospace`;
+    ctx.fillText(txt, padX, y);
+    y += Math.round(22 * s);
+  };
+  const drawBig = (txt, size) => {
+    ctx.fillStyle = '#F2EDE2';
+    ctx.font = `300 ${Math.round(size * s)}px 'Fraunces', serif`;
+    ctx.fillText(txt, padX, y);
+    y += Math.round((size + 8) * s);
+  };
+  const drawMono = (txt, color) => {
+    ctx.fillStyle = color;
+    ctx.font = `500 ${Math.round(12 * s)}px 'JetBrains Mono', monospace`;
+    ctx.fillText(txt, padX, y);
+    y += Math.round(20 * s);
+  };
+
+  // ── Top brand row: wordmark + date ─────────────────
+  ctx.fillStyle = '#F2EDE2';
+  ctx.font = `300 italic ${Math.round(30 * s)}px 'Fraunces', serif`;
+  const brandW = ctx.measureText('Latent.').width;
+  ctx.fillText('Latent.', padX, y);
+  if (f.date && m.dateShort) {
+    ctx.fillStyle = '#B8AE9C';
+    ctx.font = `500 ${Math.round(11 * s)}px 'JetBrains Mono', monospace`;
+    ctx.fillText(m.dateShort, padX + brandW + Math.round(16 * s), y + Math.round(14 * s));
+  }
+  y += Math.round(42 * s);
+  drawSep();
+
+  // ── Place: large serif locality, region/country below ──
+  if (f.place && m.place) {
+    const parts = m.place.split(' · ');
+    const locality = parts[0];
+    const region   = parts.slice(1).join(' · ');
+    drawLabel('PLACE');
+    drawBig(locality, 60);
+    if (region) drawMono(region, '#B8AE9C');
+    y += Math.round(6 * s);
+  }
+
+  // ── Coordinates + altitude ─────────────────────────
+  if (f.gps && m.gpsShort) drawMono(m.gpsShort, '#B8AE9C');
+  if (f.gps && m.altitude) drawMono('alt · ' + m.altitude, '#8A8377');
+
+  // ── Capture details ────────────────────────────────
+  const hasCapture =
+    (f.date && m.dateLong) ||
+    (f.camera && m.camera) ||
+    (f.lens && m.lens) ||
+    (f.exposure && m.exposure);
+
+  if (hasCapture) {
+    y += Math.round(20 * s);
+    drawSep();
+    if (f.date && m.dateLong) {
+      drawLabel('CAPTURED');
+      drawBig(m.dateLong, 22);
+    }
+    if (f.camera && m.camera) {
+      y += Math.round(6 * s);
+      drawLabel('CAMERA');
+      ctx.fillStyle = '#F2EDE2';
+      ctx.font = `400 ${Math.round(20 * s)}px 'Fraunces', serif`;
+      ctx.fillText(m.camera, padX, y);
+      y += Math.round(30 * s);
+    }
+    if (f.lens && m.lens)         drawMono(m.lens, '#B8AE9C');
+    if (f.exposure && m.exposure) drawMono(m.exposure, '#E8923C');
   }
 }
 
