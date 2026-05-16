@@ -33,7 +33,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   html, body {
-    background: var(--bg);
+    background: #050403;
     color: var(--ink);
     font-family: 'Fraunces', serif;
     font-weight: 400;
@@ -41,10 +41,17 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  body::before {
-    /* film grain */
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 16px;
+  }
+
+  .frame::before {
+    /* film grain — scoped to the device screen */
     content: '';
-    position: fixed;
+    position: absolute;
     inset: 0;
     pointer-events: none;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
@@ -54,27 +61,62 @@
   }
 
   .frame {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 48px 32px 96px;
+    /* Phone-shaped device frame. On desktop it looks like a phone
+       mockup; on actual phones the bezel/shadow drop away. */
+    width: 100%;
+    max-width: 400px;
+    height: min(844px, calc(100vh - 40px));
+    background: var(--bg);
+    border-radius: 44px;
+    box-shadow:
+      0 0 0 2px #1a1611,
+      0 0 0 10px #0a0907,
+      0 0 0 11px #1f1a14,
+      0 40px 80px rgba(0, 0, 0, 0.7),
+      0 10px 30px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
   }
 
-  /* ─── Header ──────────────────────────────────────── */
+  /* ─── Phone status bar ────────────────────────────── */
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 28px 4px;
+    font-family: -apple-system, BlinkMacSystemFont, 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0;
+    flex-shrink: 0;
+  }
+  .statusbar .right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .statusbar svg { display: block; }
+
+  /* ─── App bar (sticky title) ──────────────────────── */
   header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding-bottom: 32px;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 20px 12px;
     border-bottom: 1px solid var(--line);
-    margin-bottom: 40px;
+    flex-shrink: 0;
   }
 
   .wordmark {
     font-family: 'Fraunces', serif;
     font-weight: 300;
-    font-size: 44px;
+    font-size: 24px;
     font-variation-settings: "opsz" 144;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
     line-height: 1;
   }
   .wordmark em {
@@ -84,32 +126,32 @@
   }
   .tagline {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: 8.5px;
     color: var(--mute);
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.22em;
+    margin-top: 6px;
   }
 
-  /* ─── Layout ──────────────────────────────────────── */
+  /* ─── Scrollable screen ───────────────────────────── */
   .grid {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr;
-    gap: 40px;
-    align-items: start;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 14px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    -webkit-overflow-scrolling: touch;
   }
-
-  @media (max-width: 880px) {
-    .grid { grid-template-columns: 1fr; gap: 32px; }
-    .frame { padding: 32px 20px 64px; }
-    .wordmark { font-size: 32px; }
-  }
+  .grid::-webkit-scrollbar { width: 0; }
 
   /* ─── Drop zone & preview ─────────────────────────── */
   .stage {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 4px;
-    min-height: 420px;
+    border-radius: 14px;
+    min-height: 320px;
     position: relative;
     overflow: hidden;
   }
@@ -122,7 +164,7 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 48px;
+    padding: 32px 20px;
     cursor: pointer;
     transition: background 0.2s;
   }
@@ -130,34 +172,34 @@
     background: var(--surface-2);
   }
   .drop-icon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     border: 1px solid var(--line);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 24px;
+    margin-bottom: 18px;
     color: var(--amber);
   }
   .drop-title {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 400;
     font-variation-settings: "opsz" 144;
     font-style: italic;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .drop-sub {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: 10px;
     color: var(--mute);
     text-transform: uppercase;
     letter-spacing: 0.15em;
   }
   .drop-formats {
-    margin-top: 24px;
+    margin-top: 18px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--amber-dim);
     letter-spacing: 0.1em;
   }
@@ -165,14 +207,14 @@
 
   .preview-wrap {
     display: none;
-    padding: 24px;
+    padding: 16px;
   }
   .preview-wrap.active { display: block; }
   .preview-wrap canvas {
     display: block;
     width: 100%;
     height: auto;
-    border: 1px solid var(--line);
+    border-radius: 8px;
     background: #000;
   }
 
@@ -180,10 +222,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 24px;
+    padding: 10px 16px;
     border-top: 1px solid var(--line);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: 10px;
     color: var(--mute);
     letter-spacing: 0.1em;
   }
@@ -202,25 +244,27 @@
     font: inherit;
     text-transform: uppercase;
     letter-spacing: 0.15em;
+    padding: 6px 4px; /* easier tap target */
+    min-height: 32px;
   }
   .btn-reset:hover { color: var(--ink); }
 
-  /* ─── Right panel ─────────────────────────────────── */
+  /* ─── Panels ──────────────────────────────────────── */
   .panel {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 28px;
+    border-radius: 14px;
+    padding: 20px 18px;
   }
-  .panel + .panel { margin-top: 24px; }
+  .panel + .panel { margin-top: 16px; }
 
   .panel-label {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     color: var(--mute);
     text-transform: uppercase;
-    letter-spacing: 0.2em;
-    margin-bottom: 18px;
+    letter-spacing: 0.18em;
+    margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -263,13 +307,13 @@
   .style-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
   }
   .style-opt {
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 14px 10px;
+    border-radius: 10px;
+    padding: 12px 8px;
     cursor: pointer;
     transition: all 0.15s;
     text-align: center;
@@ -280,10 +324,10 @@
     background: rgba(232, 146, 60, 0.08);
   }
   .style-thumb {
-    height: 48px;
+    height: 42px;
     background: #2a2520;
-    border-radius: 2px;
-    margin-bottom: 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
     position: relative;
     overflow: hidden;
   }
@@ -318,7 +362,7 @@
   }
   .style-opt.active .style-name { color: var(--amber); }
 
-  /* Toggle list for which fields to include */
+  /* Toggle list for which fields to include / ratio selection */
   .field-toggles {
     display: flex;
     flex-wrap: wrap;
@@ -327,16 +371,19 @@
   }
   .toggle {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 6px 12px;
+    letter-spacing: 0.08em;
+    padding: 9px 14px;
     border: 1px solid var(--line);
     border-radius: 999px;
     cursor: pointer;
     user-select: none;
     color: var(--mute);
     transition: all 0.15s;
+    min-height: 34px; /* finger-friendly */
+    display: inline-flex;
+    align-items: center;
   }
   .toggle.on {
     border-color: var(--amber);
@@ -348,22 +395,23 @@
     cursor: not-allowed;
   }
 
-  /* Download button */
+  /* Download button — feels like a primary mobile action */
   .btn-download {
     width: 100%;
-    margin-top: 24px;
-    padding: 16px;
+    margin-top: 20px;
+    padding: 15px;
     background: var(--amber);
     color: var(--bg);
     border: none;
-    border-radius: 3px;
+    border-radius: 12px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.18em;
     cursor: pointer;
     transition: all 0.15s;
+    min-height: 48px;
   }
   .btn-download:hover:not(:disabled) {
     background: var(--ink);
@@ -401,23 +449,80 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   footer {
-    margin-top: 64px;
-    padding-top: 24px;
-    border-top: 1px solid var(--line);
+    padding: 14px 4px 0;
+    margin-top: auto;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--mute);
     text-transform: uppercase;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.13em;
     text-align: center;
+    line-height: 1.5;
   }
   footer span { color: var(--amber-dim); }
+
+  /* ─── Sticky bottom action bar + home indicator ──── */
+  .actionbar {
+    flex-shrink: 0;
+    padding: 12px 16px 6px;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+  }
+  .actionbar .btn-download { margin-top: 0; }
+  .actionbar .status { margin-top: 10px; min-height: 14px; }
+
+  .home-indicator {
+    flex-shrink: 0;
+    padding: 6px 0 8px;
+    display: flex;
+    justify-content: center;
+    background: var(--bg);
+  }
+  .home-indicator::after {
+    content: '';
+    width: 120px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--ink);
+    opacity: 0.45;
+  }
+
+  /* Phone bezel falls away on real phones — go fullscreen */
+  @media (max-width: 480px) {
+    body { padding: 0; }
+    .frame {
+      max-width: none;
+      height: 100vh;
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
 </style>
 
 </head>
 <body>
 
 <div class="frame">
+  <!-- ── Phone status bar (faux iOS) ─────────────── -->
+  <div class="statusbar">
+    <span>9:41</span>
+    <span class="right">
+      <!-- signal -->
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor">
+        <rect x="0"  y="7" width="3" height="4" rx="0.5"/>
+        <rect x="4"  y="5" width="3" height="6" rx="0.5"/>
+        <rect x="8"  y="3" width="3" height="8" rx="0.5"/>
+        <rect x="12" y="0" width="3" height="11" rx="0.5"/>
+      </svg>
+      <!-- battery -->
+      <svg width="25" height="11" viewBox="0 0 25 11" fill="none" stroke="currentColor" stroke-width="0.8">
+        <rect x="0.5" y="0.5" width="21" height="10" rx="2.5"/>
+        <rect x="22.2" y="3.5" width="1.6" height="4" rx="0.6" fill="currentColor" stroke="none"/>
+        <rect x="2" y="2" width="18" height="7" rx="1.4" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+  </div>
+
   <header>
     <div class="wordmark">Latent<em>.</em></div>
     <div class="tagline">EXIF · Composite · Export</div>
@@ -447,9 +552,7 @@
       <input type="file" id="file-input" accept="image/*,.heic,.heif">
     </section>
 
-```
-<!-- ── Side panel ──────────────────────────────── -->
-<aside>
+    <!-- ── Panels ──────────────────────────────────── -->
   <div class="panel">
     <div class="panel-label">Metadata</div>
     <dl class="meta-list" id="meta-list">
@@ -474,7 +577,7 @@
       </div>
     </div>
 
-    <div class="panel-label" style="margin-top:24px">Aspect Ratio</div>
+    <div class="panel-label" style="margin-top:18px">Aspect Ratio</div>
     <div class="field-toggles" id="ratio-toggles">
       <span class="toggle on" data-ratio="original">Original</span>
       <span class="toggle" data-ratio="1:1">1:1 Square</span>
@@ -485,8 +588,12 @@
       <span class="toggle" data-ratio="16:9">16:9</span>
       <span class="toggle" data-ratio="9:16">9:16 Story</span>
     </div>
+    <div class="field-toggles" id="ratio-mode-toggles" style="margin-top:10px">
+      <span class="toggle on" data-mode="crop">Crop</span>
+      <span class="toggle" data-mode="fit">Fit (no crop)</span>
+    </div>
 
-    <div class="panel-label" style="margin-top:24px">Fields</div>
+    <div class="panel-label" style="margin-top:18px">Fields</div>
     <div class="field-toggles" id="field-toggles">
       <span class="toggle on" data-field="date">Date</span>
       <span class="toggle on" data-field="gps">GPS</span>
@@ -495,18 +602,20 @@
       <span class="toggle on" data-field="lens">Lens</span>
       <span class="toggle on" data-field="exposure">Exposure</span>
     </div>
-
-    <button class="btn-download" id="download" disabled>Export Stamped Image</button>
-    <div class="status" id="status"></div>
-  </div>
-</aside>
-```
-
   </div>
 
   <footer>
     All processing happens in your browser <span>·</span> nothing is uploaded
   </footer>
+  </div><!-- /.grid -->
+
+  <!-- ── Sticky primary action ──────────────────── -->
+  <div class="actionbar">
+    <button class="btn-download" id="download" disabled>Export Stamped Image</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="home-indicator"></div>
 </div>
 
 <script>
@@ -518,6 +627,7 @@ const state = {
   meta: null,         // formatted metadata
   style: 'border',
   ratio: 'original',
+  ratioMode: 'crop', // 'crop' = center-crop to fill (some image lost); 'fit' = letterbox/pillarbox (no loss)
   fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
 };
 
@@ -547,8 +657,12 @@ $('reset').addEventListener('click', () => {
   state.meta = null;
   state.filename = null;
   state.ratio = 'original';
+  state.ratioMode = 'crop';
   document.querySelectorAll('#ratio-toggles .toggle').forEach(o => {
     o.classList.toggle('on', o.dataset.ratio === 'original');
+  });
+  document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => {
+    o.classList.toggle('on', o.dataset.mode === 'crop');
   });
   $('preview-wrap').classList.remove('active');
   $('toolbar').style.display = 'none';
@@ -882,6 +996,16 @@ document.querySelectorAll('#ratio-toggles .toggle').forEach(t => {
   });
 });
 
+// Crop vs Fit (letterbox) — radio behavior
+document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => o.classList.remove('on'));
+    t.classList.add('on');
+    state.ratioMode = t.dataset.mode;
+    if (state.image) composite();
+  });
+});
+
 // ─── Compositing ──────────────────────────────────────
 function showPreview() {
   drop.style.display = 'none';
@@ -909,35 +1033,66 @@ function composite() {
 
   const lines = getActiveLines();
   const style = state.style;
-  const crop = getCrop(img, state.ratio);
+  const layout = getLayout(img, state.ratio, state.ratioMode);
 
-  // Output dimensions are the cropped dimensions
-  const W = crop.sW;
-  const H = crop.sH;
+  // "Photo area" dimensions — what each style treats as the image tile.
+  const W = layout.frameW;
+  const H = layout.frameH;
   const scale = W / 1000;  // text scale baseline
-  // Final canvas should match the cropped image's ratio so the export is
-  // Instagram-ready (no re-crop on upload). null = keep the style's natural size.
+  // Final canvas should match the photo area's ratio so the export is
+  // ratio-exact (no re-crop on upload). null = keep the style's natural size.
   const targetRatio = state.ratio === 'original' ? null : W / H;
 
   if (style === 'border') {
-    drawFilmBorder(img, crop, W, H, scale, lines, targetRatio);
+    drawFilmBorder(img, layout, W, H, scale, lines, targetRatio);
   } else if (style === 'strip') {
-    drawDataStrip(img, crop, W, H, scale, lines);
+    drawDataStrip(img, layout, W, H, scale, lines);
   } else {
-    drawCornerStamp(img, crop, W, H, scale, lines);
+    drawCornerStamp(img, layout, W, H, scale, lines);
   }
 }
 
-// Center-crop the source image to the target aspect ratio.
-function getCrop(img, ratio) {
+// Compute how to place the source image inside a frame at the chosen ratio.
+//   crop mode: center-crop the image to fill the frame (some image lost)
+//   fit mode:  letterbox/pillarbox so the full image is preserved (bars added)
+// Returns the source rect to sample from the image plus the frame size and the
+// image's position/size within that frame.
+function getLayout(img, ratio, mode) {
   const iW = img.width;
   const iH = img.height;
+
   if (!ratio || ratio === 'original') {
-    return { sx: 0, sy: 0, sW: iW, sH: iH };
+    return {
+      sx: 0, sy: 0, sW: iW, sH: iH,
+      frameW: iW, frameH: iH,
+      imgX: 0, imgY: 0, imgW: iW, imgH: iH,
+    };
   }
+
   const [a, b] = ratio.split(':').map(Number);
   const target = a / b;
   const current = iW / iH;
+
+  if (mode === 'fit') {
+    // Use the full source; expand the frame to target ratio with bars.
+    let frameW, frameH;
+    if (current > target) {
+      frameW = iW;
+      frameH = Math.round(iW / target);
+    } else {
+      frameH = iH;
+      frameW = Math.round(iH * target);
+    }
+    return {
+      sx: 0, sy: 0, sW: iW, sH: iH,
+      frameW, frameH,
+      imgX: Math.round((frameW - iW) / 2),
+      imgY: Math.round((frameH - iH) / 2),
+      imgW: iW, imgH: iH,
+    };
+  }
+
+  // crop mode: center-crop source so the frame is target ratio, no bars.
   let sW, sH, sx, sy;
   if (current > target) {
     sH = iH;
@@ -950,11 +1105,15 @@ function getCrop(img, ratio) {
     sx = 0;
     sy = Math.round((iH - sH) / 2);
   }
-  return { sx, sy, sW, sH };
+  return {
+    sx, sy, sW, sH,
+    frameW: sW, frameH: sH,
+    imgX: 0, imgY: 0, imgW: sW, imgH: sH,
+  };
 }
 
 // ─── Style 1: Film Border ─────────────────────────────
-function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
+function drawFilmBorder(img, layout, W, H, s, lines, targetRatio) {
   const margin = Math.round(40 * s);
   const bottomExtra = Math.round((40 + 14 * Math.max(lines.length, 1)) * s);
 
@@ -984,19 +1143,24 @@ function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
   // Subtle film grain across the cream paper
   drawNoise(0, 0, cW, cH, 0.02);
 
-  // Photo centered horizontally (canvas may be wider than W + 2*margin
-  // when targetRatio expansion kicks in), top-aligned to the natural margin
-  const imgX = Math.round((cW - W) / 2);
-  const imgY = margin;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, imgX, imgY, W, H);
+  // Photo tile centered horizontally (canvas may be wider than W + 2*margin
+  // when targetRatio expansion kicks in), top-aligned to the natural margin.
+  // In fit mode the image is letterboxed inside the tile; cream shows through.
+  const tileX = Math.round((cW - W) / 2);
+  const tileY = margin;
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    tileX + layout.imgX, tileY + layout.imgY, layout.imgW, layout.imgH,
+  );
 
-  // Metadata in bottom margin — aligned to image edges, two columns
+  // Metadata in bottom margin — aligned to tile edges, two columns
   ctx.fillStyle = '#1A1714';
   const fontSize = Math.round(11 * s);
   ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
   ctx.textBaseline = 'top';
 
-  const startY = imgY + H + Math.round(24 * s);
+  const startY = tileY + H + Math.round(24 * s);
   const colGap = Math.round(20 * s);
   const labelW = Math.round(60 * s);
   let y = startY;
@@ -1004,25 +1168,32 @@ function drawFilmBorder(img, crop, W, H, s, lines, targetRatio) {
 
   for (const line of lines) {
     ctx.fillStyle = '#8A8377';
-    ctx.fillText(line.key, imgX, y);
+    ctx.fillText(line.key, tileX, y);
     ctx.fillStyle = '#1A1714';
-    ctx.fillText(line.val, imgX + labelW + colGap, y);
+    ctx.fillText(line.val, tileX + labelW + colGap, y);
     y += lineH;
   }
 
-  // Right-side accent — Latent wordmark style, anchored to image right
+  // Right-side accent — Latent wordmark, anchored to tile right
   ctx.fillStyle = '#E8923C';
   ctx.font = `italic 300 ${Math.round(18 * s)}px 'Fraunces', serif`;
   ctx.textAlign = 'right';
-  ctx.fillText('Latent.', imgX + W, startY);
+  ctx.fillText('Latent.', tileX + W, startY);
   ctx.textAlign = 'left';
 }
 
 // ─── Style 2: Data Strip ──────────────────────────────
-function drawDataStrip(img, crop, W, H, s, lines) {
+function drawDataStrip(img, layout, W, H, s, lines) {
   canvas.width = W;
   canvas.height = H;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, 0, 0, W, H);
+  // Black backdrop fills any letterbox/pillarbox bars in fit mode
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
 
   // Gradient strip at bottom
   const stripH = Math.round((30 + 16 * lines.length) * s);
@@ -1064,10 +1235,17 @@ function drawDataStrip(img, crop, W, H, s, lines) {
 }
 
 // ─── Style 3: Corner Stamp ────────────────────────────
-function drawCornerStamp(img, crop, W, H, s, lines) {
+function drawCornerStamp(img, layout, W, H, s, lines) {
   canvas.width = W;
   canvas.height = H;
-  ctx.drawImage(img, crop.sx, crop.sy, crop.sW, crop.sH, 0, 0, W, H);
+  // Black backdrop fills any letterbox/pillarbox bars in fit mode
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
 
   const padX = Math.round(20 * s);
   const padY = Math.round(16 * s);
