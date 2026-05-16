@@ -306,7 +306,7 @@
   /* Style picker */
   .style-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
   .style-opt {
@@ -324,7 +324,7 @@
     background: rgba(232, 146, 60, 0.08);
   }
   .style-thumb {
-    height: 42px;
+    height: 48px;
     background: #2a2520;
     border-radius: 6px;
     margin-bottom: 8px;
@@ -352,6 +352,19 @@
     right: 4px; bottom: 4px;
     width: 18px; height: 10px;
     background: var(--ink-dim);
+  }
+  /* Journal thumb — left-aligned stacked text overlay */
+  .thumb-journal {
+    background: linear-gradient(90deg, rgba(0,0,0,0.55), transparent 60%), #2a2520;
+  }
+  .thumb-journal::after {
+    left: 6px; top: 8px;
+    width: 16px; height: 32px;
+    background:
+      linear-gradient(var(--amber) 0 2px, transparent 2px 6px,
+                      var(--ink) 6px 14px,    transparent 14px 18px,
+                      var(--amber-dim) 18px 19px, transparent 19px 22px,
+                      var(--ink-dim) 22px 28px, transparent 28px);
   }
   .style-name {
     font-family: 'JetBrains Mono', monospace;
@@ -567,6 +580,10 @@
         <div class="style-thumb thumb-border"></div>
         <div class="style-name">Film Border</div>
       </div>
+      <div class="style-opt" data-style="journal">
+        <div class="style-thumb thumb-journal"></div>
+        <div class="style-name">Journal</div>
+      </div>
       <div class="style-opt" data-style="strip">
         <div class="style-thumb thumb-strip"></div>
         <div class="style-name">Data Strip</div>
@@ -589,8 +606,8 @@
       <span class="toggle" data-ratio="9:16">9:16 Story</span>
     </div>
     <div class="field-toggles" id="ratio-mode-toggles" style="margin-top:10px">
-      <span class="toggle on" data-mode="crop">Crop</span>
-      <span class="toggle" data-mode="fit">Fit (no crop)</span>
+      <span class="toggle on" data-mode="fit">Fit (full image)</span>
+      <span class="toggle" data-mode="crop">Crop to fill</span>
     </div>
 
     <div class="panel-label" style="margin-top:18px">Fields</div>
@@ -627,7 +644,7 @@ const state = {
   meta: null,         // formatted metadata
   style: 'border',
   ratio: 'original',
-  ratioMode: 'crop', // 'crop' = center-crop to fill (some image lost); 'fit' = letterbox/pillarbox (no loss)
+  ratioMode: 'fit', // 'fit' = letterbox/pillarbox (full image, no loss); 'crop' = center-crop to fill
   fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
 };
 
@@ -657,12 +674,12 @@ $('reset').addEventListener('click', () => {
   state.meta = null;
   state.filename = null;
   state.ratio = 'original';
-  state.ratioMode = 'crop';
+  state.ratioMode = 'fit';
   document.querySelectorAll('#ratio-toggles .toggle').forEach(o => {
     o.classList.toggle('on', o.dataset.ratio === 'original');
   });
   document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => {
-    o.classList.toggle('on', o.dataset.mode === 'crop');
+    o.classList.toggle('on', o.dataset.mode === 'fit');
   });
   $('preview-wrap').classList.remove('active');
   $('toolbar').style.display = 'none';
@@ -1047,6 +1064,8 @@ function composite() {
     drawFilmBorder(img, layout, W, H, scale, lines, targetRatio);
   } else if (style === 'strip') {
     drawDataStrip(img, layout, W, H, scale, lines);
+  } else if (style === 'journal') {
+    drawJournal(img, layout, W, H, scale);
   } else {
     drawCornerStamp(img, layout, W, H, scale, lines);
   }
@@ -1286,6 +1305,161 @@ function drawCornerStamp(img, layout, W, H, s, lines) {
     const keyW = ctx.measureText(line.key).width;
     ctx.fillText(line.val, boxX + padX + keyW + Math.round(10 * s), y);
     y += lineH;
+  }
+}
+
+// ─── Style 4: Journal ─────────────────────────────────
+// Editorial overlay inspired by trip-journal mobile UIs: all-serif, all-cream
+// typography on a soft dark vignette anchored to the lower-left of the photo.
+// Two big serif headlines with subtitles, separated by a dotted progress line
+// and a hand-drawn sparkline as decorative rhythm markers.
+function drawJournal(img, layout, W, H, sIgnored) {
+  canvas.width = W;
+  canvas.height = H;
+
+  // Black backdrop fills any fit-mode letterbox/pillarbox bars
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(
+    img,
+    layout.sx, layout.sy, layout.sW, layout.sH,
+    layout.imgX, layout.imgY, layout.imgW, layout.imgH,
+  );
+
+  // Soft vignette in the lower-left where the text lives. Subtler than a
+  // hard left-side curtain so the photo still reads on the right side.
+  const vgnW = Math.round(W * 0.62);
+  const vgnH = Math.round(H * 0.82);
+  const vGrad = ctx.createLinearGradient(0, H, vgnW, H - vgnH);
+  vGrad.addColorStop(0,   'rgba(0, 0, 0, 0.62)');
+  vGrad.addColorStop(0.55,'rgba(0, 0, 0, 0.30)');
+  vGrad.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = vGrad;
+  ctx.fillRect(0, 0, vgnW, H);
+
+  // Scale typography off the shorter side so the editorial proportions stay
+  // balanced across portrait, square, and landscape ratios.
+  const s = Math.min(W, H) / 1000;
+  const m = state.meta || {};
+  const f = state.fields;
+  const padX = Math.round(56 * s);
+  let y     = Math.round(60 * s);
+
+  ctx.textBaseline = 'top';
+
+  const ink     = '#F2EDE2';
+  const inkDim  = 'rgba(242, 237, 226, 0.78)';
+  const inkSoft = 'rgba(242, 237, 226, 0.55)';
+
+  const drawSerif = (txt, size, weight, color, italic) => {
+    ctx.fillStyle = color;
+    ctx.font = `${italic ? 'italic ' : ''}${weight} ${Math.round(size * s)}px 'Fraunces', serif`;
+    ctx.fillText(txt, padX, y);
+    y += Math.round((size + 6) * s);
+  };
+
+  const drawHairline = (len) => {
+    ctx.strokeStyle = inkSoft;
+    ctx.lineWidth = Math.max(1, Math.round(1 * s));
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(padX, y);
+    ctx.lineTo(padX + Math.round(len * s), y);
+    ctx.stroke();
+    y += Math.round(28 * s);
+  };
+
+  // Dotted progress line with a filled dot marker — mimics the "progress
+  // through a journey" element from the reference.
+  const drawDottedProgress = (len, progress) => {
+    const dot = Math.max(1.6, 1.6 * s);
+    ctx.strokeStyle = inkDim;
+    ctx.lineWidth = dot;
+    ctx.setLineDash([dot * 1.4, dot * 2.4]);
+    ctx.beginPath();
+    ctx.moveTo(padX, y);
+    ctx.lineTo(padX + Math.round(len * s), y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.arc(padX + Math.round(len * s * progress), y, dot * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    y += Math.round(28 * s);
+  };
+
+  // Hand-drawn-looking sparkline as a closing flourish.
+  const drawSparkline = (len, height) => {
+    const px = padX;
+    const py = y + Math.round(height * s * 0.5);
+    const seg = Math.round(len * s);
+    ctx.strokeStyle = inkSoft;
+    ctx.lineWidth = Math.max(1, Math.round(1 * s));
+    ctx.beginPath();
+    const N = 28;
+    let lastX = px, lastY = py;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const x = px + seg * t;
+      // Deterministic gentle wave: sum of a few sines/cosines.
+      const wy = py
+        + Math.sin(t * Math.PI * 2.6) * height * s * 0.30
+        + Math.cos(t * Math.PI * 1.1 + 0.7) * height * s * 0.18
+        + Math.sin(t * Math.PI * 4.5 + 2.1) * height * s * 0.08;
+      if (i === 0) ctx.moveTo(x, wy); else ctx.lineTo(x, wy);
+      lastX = x; lastY = wy;
+    }
+    ctx.stroke();
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, Math.max(2.2, 2.2 * s), 0, Math.PI * 2);
+    ctx.fill();
+    y += Math.round((height + 14) * s);
+  };
+
+  // ── Brand header: tiny wordmark + date ───────────
+  drawSerif('Latent.', 18, '400', ink, true);
+  y -= Math.round(8 * s); // tighten the gap
+  if (f.date && m.dateShort) drawSerif(m.dateShort, 13, '400', inkDim, false);
+
+  drawHairline(72);
+
+  // ── Section 1: Place — big serif headline + coords ─
+  if (f.place && m.place) {
+    const parts = m.place.split(' · ');
+    drawSerif(parts[0], 56, '300', ink, false);
+    if (f.gps && m.gpsShort) {
+      y -= Math.round(2 * s);
+      drawSerif(m.gpsShort, 14, '400', inkDim, false);
+    } else if (parts.length > 1) {
+      y -= Math.round(2 * s);
+      drawSerif(parts.slice(1).join(' · '), 14, '400', inkDim, false);
+    }
+    if (m.altitude) drawSerif('alt · ' + m.altitude, 12, '400', inkSoft, false);
+    y += Math.round(6 * s);
+    drawDottedProgress(240, 0.62);
+  }
+
+  // ── Section 2: Capture — big serif date or camera + details ─
+  const hasCapture =
+    (f.date && m.dateLong) ||
+    (f.camera && m.camera) ||
+    (f.lens && m.lens) ||
+    (f.exposure && m.exposure);
+
+  if (hasCapture) {
+    if (f.camera && m.camera) {
+      drawSerif(m.camera, 30, '300', ink, false);
+    } else if (f.date && m.dateLong) {
+      drawSerif(m.dateLong, 26, '300', ink, false);
+    }
+    if (f.exposure && m.exposure) {
+      y -= Math.round(2 * s);
+      drawSerif(m.exposure, 14, '400', inkDim, false);
+    }
+    if (f.lens && m.lens) drawSerif(m.lens, 12, '400', inkSoft, false);
+    y += Math.round(8 * s);
+    drawSparkline(220, 26);
   }
 }
 
