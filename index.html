@@ -589,8 +589,8 @@
       <span class="toggle" data-ratio="9:16">9:16 Story</span>
     </div>
     <div class="field-toggles" id="ratio-mode-toggles" style="margin-top:10px">
-      <span class="toggle on" data-mode="crop">Crop</span>
-      <span class="toggle" data-mode="fit">Fit (no crop)</span>
+      <span class="toggle on" data-mode="fit">Fit (full image)</span>
+      <span class="toggle" data-mode="crop">Crop to fill</span>
     </div>
 
     <div class="panel-label" style="margin-top:18px">Fields</div>
@@ -627,7 +627,7 @@ const state = {
   meta: null,         // formatted metadata
   style: 'border',
   ratio: 'original',
-  ratioMode: 'crop', // 'crop' = center-crop to fill (some image lost); 'fit' = letterbox/pillarbox (no loss)
+  ratioMode: 'fit', // 'fit' = letterbox/pillarbox (full image, no loss); 'crop' = center-crop to fill
   fields: { date: true, gps: true, place: true, camera: true, lens: true, exposure: true },
 };
 
@@ -657,12 +657,12 @@ $('reset').addEventListener('click', () => {
   state.meta = null;
   state.filename = null;
   state.ratio = 'original';
-  state.ratioMode = 'crop';
+  state.ratioMode = 'fit';
   document.querySelectorAll('#ratio-toggles .toggle').forEach(o => {
     o.classList.toggle('on', o.dataset.ratio === 'original');
   });
   document.querySelectorAll('#ratio-mode-toggles .toggle').forEach(o => {
-    o.classList.toggle('on', o.dataset.mode === 'crop');
+    o.classList.toggle('on', o.dataset.mode === 'fit');
   });
   $('preview-wrap').classList.remove('active');
   $('toolbar').style.display = 'none';
